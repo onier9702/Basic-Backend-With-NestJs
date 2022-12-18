@@ -38,7 +38,7 @@ export class Auth {
 
 }
 
-// //Query Entity User Auth
+//Query Entity User Auth
 // CREATE TABLE `basic_nest_backend`.`auth` (
 //     `uid` INT NOT NULL AUTO_INCREMENT,
 //     `username` VARCHAR(45) NOT NULL,

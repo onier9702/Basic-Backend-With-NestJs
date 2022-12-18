@@ -27,7 +27,7 @@ export class Product {
     @Column()
     gender: string;
 
-    @Column({ type: 'simple-array' })
+    @Column({ type: 'simple-array', nullable: true })
     tags: string[];
 
     // Relations

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -7,6 +7,7 @@ import { ProductImages } from './entities/product-images.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PaginationDto } from '../general/pagination/pagination.dto';
+import { Auth } from '../auth/entities/auth.entity';
 
 @Injectable()
 export class ProductService {
@@ -20,11 +21,12 @@ export class ProductService {
     private readonly prodImagesRepository: Repository<ProductImages>
   ) {}
 
-  public async create(createProductDto: CreateProductDto) {
+  public async create(createProductDto: CreateProductDto, user: Auth) {
 
     const { name, images = [], ...listProds } = createProductDto;
     const prod = this.productRepository.create({
       name: name.toUpperCase(),
+      user,
       ...listProds,
       images: images.map( img =>  this.prodImagesRepository.create( { url: img } ) )
     });
@@ -88,8 +90,11 @@ export class ProductService {
   }
 
   // Update a product
-  public async update(id: number, updateProductDto: UpdateProductDto) {
+  public async update(id: number, updateProductDto: UpdateProductDto, uid: number) {
     const { name: oldName, ...oldProd } = await this.findOneQuery( id );
+    const uidUserDB = oldProd.user.uid;
+    if ( uid !== +uidUserDB ) throw new UnauthorizedException(`You does not have permission to update a product of other client, it is not yours`);
+
     let nameCapitalized: string;
     const { name, images = [], ...newProd } = updateProductDto;
 
@@ -111,9 +116,11 @@ export class ProductService {
   
       // const updatedProd = await this.productRepository.update(id, product)
       const updatedProd = await this.productRepository.save(product); // if row does not exists create the new row, otherwise updates
-      const { images: imgs = [], ...rest } = updatedProd;
+      const { images: imgs = [], user, ...rest } = updatedProd;
+      const { password, isActive, roles, ...dataUserDBToFront } = user;
       return {
         ...rest,
+        user: {...dataUserDBToFront},
         images: imgs.map( img => img.url )
       }
       
@@ -124,10 +131,14 @@ export class ProductService {
   }
 
   // Delete one product by ID
-  public async remove(id: number) {
+  public async remove(id: number, uid?: number) {
     const prod = await this.findOneQuery( id );
-    const deletedProd = await this.productRepository.remove(prod)
-    return deletedProd;
+    if ( uid ) { // if parameter uid was passed then verify if user from token is the same user with that product he want to delete
+      const { uid: uidDB } = prod.user;
+      if ( uid !== uidDB ) throw new UnauthorizedException(`You does not have permission to delete a product of other client, it is not yours`);
+    }
+    const { name, id: idDB } = await this.productRepository.remove(prod)
+    return `Product ${name} with ID: ${idDB} was deleted`;
   }
 
   // Delete many products 
@@ -158,12 +169,14 @@ export class ProductService {
     return product;
   }
 
-  // method to plane all images
+  // method to plane all images and send necessary data user
   private plainResponse( prod: Product ) {
 
-    const { images = [], ...rest } = prod;
+    const { images = [], user, ...rest } = prod;
+    const { password, roles, isActive, ...attributesUserToSendFront } = user;
     return {
       ...rest,
+      user: {...attributesUserToSendFront},
       images: images.map( elem => elem.url )
     }
   }
@@ -172,7 +185,7 @@ export class ProductService {
     console.log(err);
     
     const { errno, sqlMessage } = err;    
-    if ( errno === 1062 ) throw new BadRequestException(sqlMessage);
+    if ( errno === 1062 || errno === 1364 ) throw new BadRequestException(sqlMessage);
 
     throw new InternalServerErrorException(`Error not implemented: check --logs-- in console`);  
     

@@ -1,16 +1,26 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Put, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Put, Query, UnauthorizedException } from '@nestjs/common';
+
+
 import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PaginationDto } from '../general/pagination/pagination.dto';
+import { Auth } from '../auth/entities/auth.entity';
+import { GetUser, AuthDecorator } from '../auth/decorators';
+import { ListRoles } from '../auth/interfaces/list-roles';
+import { ListDataUser } from '../auth/interfaces/list-data-user';
 
 @Controller('product')
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
   @Post()
-  create(@Body() createProductDto: CreateProductDto) {
-    return this.productService.create(createProductDto);
+  @AuthDecorator()
+  create(
+    @GetUser() user: Auth,
+    @Body() createProductDto: CreateProductDto
+    ) {
+    return this.productService.create(createProductDto, user );
   }
 
   @Get()
@@ -24,17 +34,22 @@ export class ProductController {
   }
 
   @Patch(':id')
+  @AuthDecorator()
   update(
+    @GetUser(ListDataUser.uid) uid: number,
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
   ){
-
-    return this.productService.update(+id, updateProductDto);
+    return this.productService.update(+id, updateProductDto, uid);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.productService.remove(+id);
+  @AuthDecorator()
+  remove(
+    @GetUser(ListDataUser.uid) uid: number,
+    @Param('id') id: string
+  ) {
+    return this.productService.remove(+id, uid);
   }
 
   @Put('delete-many')
